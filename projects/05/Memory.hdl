@@ -27,5 +27,17 @@ CHIP Memory {
     OUT out[16];
 
     PARTS:
-    // Put your code here:
+    //Gives access to low and high memory, low mem is data, high is devices
+    DMux(in=load, sel=address[14], a=loadlow, b=loadhigh);
+    RAM16K(in=in, load=loadlow, address=address[0..13], out=dataout);
+    
+    Not(in=address[13], out=screenon);
+    And(a=loadhigh, b=screenon, out=loadscreen);
+    Screen(in=in, load=loadscreen, address=address[0..12], out=screenout);
+    
+    Keyboard(out=keyout);
+    
+    // There are two options, set up memory around the mapped areas, or treat the rest as wonky. option 2 sounds best
+    Mux16(a=screenout, b=keyout, sel=address[13], out=devout);
+    Mux16(a=dataout, b=devout, sel=address[14], out=out);
 }

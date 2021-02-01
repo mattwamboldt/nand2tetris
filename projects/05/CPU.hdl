@@ -39,5 +39,44 @@ CHIP CPU {
         pc[15];          // address of next instruction
 
     PARTS:
-    // Put your code here:
+    // Instruction decoding
+    And(a=instruction[15], b=instruction[12], out=a);
+    And(a=instruction[15], b=instruction[11], out=c1);
+    And(a=instruction[15], b=instruction[10], out=c2);
+    And(a=instruction[15], b=instruction[9], out=c3);
+    And(a=instruction[15], b=instruction[8], out=c4);
+    And(a=instruction[15], b=instruction[7], out=c5);
+    And(a=instruction[15], b=instruction[6], out=c6);
+    And(a=instruction[15], b=instruction[5], out=d1);
+    And(a=instruction[15], b=instruction[4], out=writeD);
+    And(a=instruction[15], b=instruction[3], out=writeM);
+    And(a=instruction[15], b=instruction[2], out=j1);
+    And(a=instruction[15], b=instruction[1], out=j2);
+    And(a=instruction[15], b=instruction[0], out=j3);
+    
+    // A register
+    Not(in=instruction[15], out=ainstruction);
+    Or(a=d1, b=ainstruction, out=writeA);
+    Mux16(a=instruction, b=result, sel=instruction[15], out=ain);
+    ARegister(in=ain, load=writeA, out=aval, out[0..14]=addressM);
+    
+    // D Register
+    DRegister(in=result, load=writeD, out=dval);
+    
+    //Conections for the ALU
+    Mux16(a=aval, b=inM, sel=a, out=amval);
+    ALU(x=dval, y=amval,
+	zx=c1, nx=c2, zy=c3, ny=c4, f=c5, no=c6,
+	out=result, out=outM, zr=resultzero, ng=resultneg);
+	
+    // PC Control and jump logic
+    Or(a=resultzero, b=resultneg, out=lte);
+    Not(in=lte, out=gt);
+    And(a=j1, b=resultneg, out=jlt);
+    And(a=j2, b=resultzero, out=jeq);
+    And(a=j3, b=gt, out=jgt);
+    Or(a=jlt, b=jeq, out=jle);
+    Or(a=jle, b=jgt, out=jmp);
+    
+    PC(in=aval, load=jmp, inc=true, reset=reset, out[0..14]=pc);
 }
