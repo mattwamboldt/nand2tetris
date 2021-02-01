@@ -16,5 +16,15 @@ CHIP PC {
     OUT out[16];
 
     PARTS:
-    // Put your code here:
+    // Perform our only calculation
+    Inc16(in=old, out=incremented);
+    
+    //Figure out the which input value
+    Mux16(a=old, b=incremented, sel=inc, out=in1);
+    Mux16(a=in1, b=in, sel=load, out=in2);
+    Mux16(a=in2, b=false, sel=reset, out=val);
+    
+    // Since the 3 flags cause a load and loading the old value doesn't matter
+    // We can skip muxing to find out if we load and just always do so
+    Register(in=val, load=true, out=out, out=old);
 }
