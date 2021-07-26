@@ -11,23 +11,30 @@ struct Buffer
 Buffer ReadWholeFile(char* path)
 {
     Buffer result = {};
-    FILE* file = fopen(path, "r");
+    FILE* file = fopen(path, "rb");
     if (file)
     {
         fseek(file, 0, SEEK_END);
         result.size = ftell(file);
-        rewind(file);
+        fseek(file, 0, SEEK_SET);
+        int pos = ftell(file);
 
         result.memory = (char*)malloc(result.size + 1);
-        memset(result.memory, 0, result.size + 1);
-        fread(result.memory, 1, result.size, file);
+        size_t readResult = fread(result.memory, 1, result.size, file);
+        if (readResult != result.size)
+        {
+            perror("The following error occurred");
+            exit(3);
+        }
+
+        result.memory[result.size] = 0;
         fclose(file);
     }
     else
     {
         printf("Failed to open file: %s\n", path);
     }
-
+    
     return result;
 }
 
@@ -76,6 +83,75 @@ enum Jump {
     JMP_ALL,
 };
 
+enum Type
+{
+    L_INSTRUCTION,
+    A_INSTRUCTION,
+    C_INSTRUCTION
+};
+
+struct Command {
+    Type type;
+    char* text;
+    int length;
+    int value;
+};
+
+struct Symbol {
+    const char* text;
+    int length;
+    int value;
+};
+
+struct SymbolTable
+{
+    int count;
+    Symbol symbols[32000];
+
+    void Push(const char* text, int value)
+    {
+        symbols[count++] = { text, (int)strlen(text), value };
+    }
+
+    void Push(const char* text, int length, int value)
+    {
+        char* newText = (char*)malloc(length + 1);
+        strncpy(newText, text, length);
+        newText[length] = 0;
+        symbols[count++] = { newText, length, value };
+    }
+
+    Symbol* Find(const char* text, int length)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            Symbol* symbol = symbols + i;
+            if (symbol->length == length)
+            {
+                int c = 0;
+                for (;c < length; ++c)
+                {
+                    if (symbol->text[c] != text[c])
+                    {
+                        break;
+                    }
+                }
+
+                if (c == length)
+                {
+                    return symbol;
+                }
+            }
+        }
+
+        return 0;
+    }
+};
+
+struct Parser {
+    char* At;
+};
+
 int main(int argc, char** argv)
 {
     if (argc != 3)
@@ -85,97 +161,162 @@ int main(int argc, char** argv)
     }
 
     printf("Assemble %s into %s\n", argv[1], argv[2]);
-
+    
     Buffer input = ReadWholeFile(argv[1]);
     if (!input.size) { return 0; }
 
-    Buffer output = {};
-    output.memory = (char*)malloc(input.size + 1);
-
+    char* At = input.memory;
     // Eat any leading whitespace
-    while (isWhitespace(*input.memory))
+    while (isWhitespace(*At))
     {
-        input.memory++;
+        ++At;
     }
 
-    int currentInstruction = 1;
+    SymbolTable symbols = {};
+    symbols.Push("SP", 0);
+    symbols.Push("LCL", 1);
+    symbols.Push("ARG", 2);
+    symbols.Push("THIS", 3);
+    symbols.Push("THAT", 4);
+    symbols.Push("R0", 0);
+    symbols.Push("R1", 1);
+    symbols.Push("R2", 2);
+    symbols.Push("R3", 3);
+    symbols.Push("R4", 4);
+    symbols.Push("R5", 5);
+    symbols.Push("R6", 6);
+    symbols.Push("R7", 7);
+    symbols.Push("R8", 8);
+    symbols.Push("R9", 9);
+    symbols.Push("R10", 10);
+    symbols.Push("R11", 11);
+    symbols.Push("R12", 12);
+    symbols.Push("R13", 13);
+    symbols.Push("R14", 14);
+    symbols.Push("R15", 15);
+    symbols.Push("SCREEN", 0x4000);
+    symbols.Push("KBD", 0x6000);
 
-    while (*input.memory)
+    int numCommands = 0;
+    Command* commands = (Command*)malloc(sizeof(Command) * 100000);
+
+    int lineNumber = 1;
+
+    while (*At)
     {
         // Process comment, TODO: handle syntax error of a single /
-        if (*(input.memory + 1) == '/' &&
-            *input.memory == '/')
+        if (*(At + 1) == '/' && *At == '/')
         {
-            while (!isEOL(*input.memory))
+            while (!isEOL(*At))
             {
-                input.memory++;
+                ++At;
             }
+
+            ++lineNumber;
         }
-        else if (*input.memory == '@')
+        else if (*At == '@')
         {
-            ++input.memory;
-            int value = 0;
+            Command command = {};
+            command.type = A_INSTRUCTION;
+
+            ++At;
 
             // Constant
-            if (isDigit(*input.memory))
+            if (isDigit(*At))
             {
                 do
                 {
-                    value *= 10;
-                    value += toDigit(*input.memory++);
-                } while (isDigit(*input.memory));
+                    command.value *= 10;
+                    command.value += toDigit(*At++);
+                } while (isDigit(*At));
             }
-            // symbol lookup
+            // symbol
             else
             {
-
-            }
-
-            for (int shift = 15; shift >= 0; --shift)
-            {
-                if (((value >> shift) & 1) > 0)
+                char* firstChar = At;
+                while (!isWhitespace(*At))
                 {
-                    output.memory[output.size++] = '1';
+                    ++At;
+                }
+
+                int length = At - firstChar;
+                Symbol* existingSymbol = symbols.Find(firstChar, length);
+                if (existingSymbol)
+                {
+                    command.value = existingSymbol->value;
                 }
                 else
                 {
-                    output.memory[output.size++] = '0';
+                    command.text = firstChar;
+                    command.length = length;
                 }
             }
 
-            output.memory[output.size++] = '\n';
-            ++currentInstruction;
-        }
-        else if (*input.memory == '(')
-        {
-            // TODO: set up a label
-            while (!isWhitespace(*input.memory++))
+            while (!isEOL(*At))
             {
-                output.memory[output.size++] = *input.memory++;
+                ++At;
             }
 
-            output.memory[output.size++] = *input.memory++;
+            if (numCommands > 0)
+            {
+                Command lastCommand = commands[numCommands];
+                if (lastCommand.type == command.type &&
+                    lastCommand.length == command.length &&
+                    lastCommand.text == command.text &&
+                    lastCommand.value == command.value)
+                {
+                    printf("Duplicate Command\n");
+                }
+            }
+
+            commands[numCommands++] = command;
+        }
+        else if (*At == '(')
+        {
+            char* firstChar = At + 1;
+            while (!isWhitespace(*At) && *At != ')')
+            {
+                ++At;
+            }
+
+            int length = At - firstChar;
+            Symbol* existingSymbol = symbols.Find(firstChar, length);
+            if (existingSymbol)
+            {
+                printf("Duplicate Symbol, chars %d\n", firstChar - input.memory);
+                return 0;
+            }
+            else
+            {
+                symbols.Push(firstChar, length, numCommands);
+            }
+
+            while (!isEOL(*At))
+            {
+                ++At;
+            }
         }
         else
         {
             // C instruction
             // destination=computation;jump
 
-            char* firstPart = input.memory;
-            while (*input.memory != '='
-                && *input.memory != ';'
-                && !isEOL(*input.memory))
+            char* firstPart = At;
+            while (*At
+                && *At != '='
+                && *At != ';'
+                && !isEOL(*At))
             {
-                ++input.memory;
+                ++At;
             }
 
             int dest = 0;
             Jump jump = JMP_NONE;
 
-            if (*input.memory == '=')
+            if (*At == '=')
             {
                 // dest portion
-                while (firstPart < input.memory)
+                while (firstPart < At)
                 {
                     switch (*firstPart)
                     {
@@ -195,12 +336,12 @@ int main(int argc, char** argv)
                     ++firstPart;
                 }
 
-                ++input.memory;
-                firstPart = input.memory;
+                ++At;
+                firstPart = At;
 
-                while (*input.memory != ';' && !isEOL(*input.memory))
+                while (*At && *At != ';' && !isEOL(*At))
                 {
-                    ++input.memory;
+                    ++At;
                 }
             }
 
@@ -396,72 +537,108 @@ int main(int argc, char** argv)
                 }
             }
 
-            if (comp < 0)
-            {
-                printf("Failed to parse: Line %d\n", currentInstruction);
-                return 0;
-            }
-
             // Add jmp
-            if (*input.memory == ';')
+            if (*At == ';')
             {
-                input.memory++;
-                if (strncmp("JGT", input.memory, 3) == 0)
+                At++;
+                if (strncmp("JGT", At, 3) == 0)
                 {
                     jump = JMP_GT;
                 }
-                else if (strncmp("JEQ", input.memory, 3) == 0)
+                else if (strncmp("JEQ", At, 3) == 0)
                 {
                     jump = JMP_EQ;
                 }
-                else if (strncmp("JGE", input.memory, 3) == 0)
+                else if (strncmp("JGE", At, 3) == 0)
                 {
                     jump = JMP_GE;
                 }
-                else if (strncmp("JLT", input.memory, 3) == 0)
+                else if (strncmp("JLT", At, 3) == 0)
                 {
                     jump = JMP_LT;
                 }
-                else if (strncmp("JNE", input.memory, 3) == 0)
+                else if (strncmp("JNE", At, 3) == 0)
                 {
                     jump = JMP_NE;
                 }
-                else if (strncmp("JLE", input.memory, 3) == 0)
+                else if (strncmp("JLE", At, 3) == 0)
                 {
                     jump = JMP_LE;
                 }
-                else if (strncmp("JMP", input.memory, 3) == 0)
+                else if (strncmp("JMP", At, 3) == 0)
                 {
                     jump = JMP_ALL;
                 }
 
-                input.memory += 3;
+                At += 3;
             }
 
-            int instruction = 0;
-            instruction = jump | (dest << 3) | (comp << 6) | (0b111 << 13);
-
-            for (int shift = 15; shift >= 0; --shift)
+            Command command = {};
+            command.type = C_INSTRUCTION;
+            command.value = jump | (dest << 3) | (comp << 6) | (0b111 << 13);
+            if (numCommands > 0)
             {
-                if (((instruction >> shift) & 1) > 0)
+                Command lastCommand = commands[numCommands];
+                if (lastCommand.type == command.type &&
+                    lastCommand.length == command.length &&
+                    lastCommand.text == command.text &&
+                    lastCommand.value == command.value)
                 {
-                    output.memory[output.size++] = '1';
-                }
-                else
-                {
-                    output.memory[output.size++] = '0';
+                    printf("Duplicate Command\n");
                 }
             }
 
-            output.memory[output.size++] = '\n';
-            ++currentInstruction;
+            while (!isEOL(*At))
+            {
+                ++At;
+            }
+
+            commands[numCommands++] = command;
         }
 
         // Eat any remaining whitespace to next command
-        while (isWhitespace(*input.memory))
+        while (isWhitespace(*At))
         {
-            input.memory++;
+            At++;
         }
+    }
+
+    Buffer output = {};
+    long outSize = numCommands * 17;
+    output.memory = (char*)malloc(outSize);
+
+    int variable = 16;
+    for (int i = 0; i < numCommands; ++i)
+    {
+        Command command = commands[i];
+        int value = command.value;
+        if (command.type == A_INSTRUCTION && command.text)
+        {
+            Symbol* existingSymbol = symbols.Find(command.text, command.length);
+            if (existingSymbol)
+            {
+                value = existingSymbol->value;
+            }
+            else
+            {
+                value = variable++;
+                symbols.Push(command.text, command.length, value);
+            }
+        }
+
+        for (int shift = 15; shift >= 0; --shift)
+        {
+            if (((value >> shift) & 1) > 0)
+            {
+                output.memory[output.size++] = '1';
+            }
+            else
+            {
+                output.memory[output.size++] = '0';
+            }
+        }
+
+        output.memory[output.size++] = '\n';
     }
 
     WriteWholeFile(argv[2], output.memory, output.size);
