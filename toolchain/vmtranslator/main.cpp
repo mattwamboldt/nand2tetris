@@ -171,6 +171,7 @@ struct CodeWriter
 {
     int compareCounts[NUM_COMPARE_OPS] = { 0, 0, 0 };
     const char* compareStrings[NUM_COMPARE_OPS] = {"LT", "GT", "EQ"};
+    char currentModule[256];
     FILE* outputFile;
 
     bool Open(char* sourcePath)
@@ -205,6 +206,21 @@ struct CodeWriter
             return false;
         }
 
+        char* dir = end;
+        while (dir > outputPath)
+        {
+            if (*dir == '\\' || *dir == '/')
+            {
+                ++dir;
+                break;
+            }
+
+            --dir;
+        }
+
+        strncpy(currentModule, dir, end - dir);
+        currentModule[end - dir] = 0;
+
         strcpy(end, ".asm");
 
         outputFile = fopen(outputPath, "w");
@@ -216,6 +232,23 @@ struct CodeWriter
         return true;
     }
 
+    void BasicSegmentAddress(const char* segment, int index)
+    {
+        fprintf(outputFile, "@%s\n", segment);
+        fprintf(outputFile, "AD=M\n");
+        if (index)
+        {
+            fprintf(outputFile, "@%d\n", index);
+            fprintf(outputFile, "AD=A+D\n");
+        }
+    }
+
+    void BasicSegmentValue(const char* segment, int index)
+    {
+        BasicSegmentAddress(segment, index);
+        fprintf(outputFile, "D=M\n");
+    }
+
     void Push(Token segment, Token index)
     {
         // Load segment value into D resgister
@@ -225,6 +258,32 @@ struct CodeWriter
             fprintf(outputFile, "@%d\n", index.value);
             fprintf(outputFile, "D=A\n");
         }
+        else if (segment.Equals("local"))
+		{
+			BasicSegmentValue("LCL", index.value);
+		}
+		else if (segment.Equals("argument"))
+		{
+			BasicSegmentValue("ARG", index.value);
+		}
+		else if (segment.Equals("this"))
+		{
+			BasicSegmentValue("THIS", index.value);
+		}
+		else if (segment.Equals("that"))
+		{
+			BasicSegmentValue("THAT", index.value);
+		}
+		else if (segment.Equals("temp"))
+		{
+			fprintf(outputFile, "@R%d\n", index.value + 5);
+			fprintf(outputFile, "D=M\n");
+		}
+		else if (segment.Equals("static"))
+		{
+			fprintf(outputFile, "@%s.%d\n", currentModule, index.value);
+			fprintf(outputFile, "D=M\n");
+		}
         else if (segment.Equals("pointer"))
         {
             if (index.value == 0)
@@ -254,15 +313,51 @@ struct CodeWriter
 
     void Pop(Token segment, Token index)
     {
-        const char* seg = "ARG";
+        if (segment.Equals("local"))
+		{
+			BasicSegmentAddress("LCL", index.value);
+		}
+		else if (segment.Equals("argument"))
+		{
+			BasicSegmentAddress("ARG", index.value);
+		}
+		else if (segment.Equals("this"))
+		{
+			BasicSegmentAddress("THIS", index.value);
+		}
+		else if (segment.Equals("that"))
+		{
+			BasicSegmentAddress("THAT", index.value);
+		}
+		else if (segment.Equals("temp"))
+		{
+			fprintf(outputFile, "@R%d\n", index.value + 5);
+			fprintf(outputFile, "D=A\n");
+		}
+		else if (segment.Equals("static"))
+		{
+			fprintf(outputFile, "@%s.%d\n", currentModule, index.value);
+			fprintf(outputFile, "D=A\n");
+		}
+		else if (segment.Equals("pointer"))
+		{
+			if (index.value == 0)
+			{
+				fprintf(outputFile, "@THIS\n");
+			}
+			else
+			{
+				fprintf(outputFile, "@THAT\n");
+			}
 
-        // D = index
-        fprintf(outputFile, "@%d\n", index.value);
-        fprintf(outputFile, "D=A\n");
-
-        // D += mem[seg]
-        fprintf(outputFile, "@%s\n", seg);
-        fprintf(outputFile, "D=M+D\n");
+			fprintf(outputFile, "D=A\n");
+		}
+		else
+		{
+			printf("Unrecognized segment: %.*s\n", segment.length, segment.text);
+			exit(0);
+			return;
+		}
 
         // mem[R15] = D
         fprintf(outputFile, "@R15\n");
