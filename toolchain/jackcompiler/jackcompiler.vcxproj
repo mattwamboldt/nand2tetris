@@ -152,12 +152,14 @@
     <ClCompile Include="jacktokenizer.cpp" />
     <ClCompile Include="symboltable.cpp" />
     <ClCompile Include="util.cpp" />
+    <ClCompile Include="vmwriter.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="compilationengine.h" />
     <ClInclude Include="jacktokenizer.h" />
     <ClInclude Include="symboltable.h" />
     <ClInclude Include="util.h" />
+    <ClInclude Include="vmwriter.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

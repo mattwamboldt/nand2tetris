@@ -1,6 +1,7 @@
 #pragma once
 #include "jacktokenizer.h"
 #include "symboltable.h"
+#include "vmwriter.h"
 
 class CompilationEngine
 {
@@ -80,16 +81,16 @@ class CompilationEngine
         /// <summary>
         /// Compiles a (possibly empty) comma-separated list of expressions
         /// </summary>
-        void compileExpressionList();
+        int compileExpressionList();
 
     private:
         JackTokenizer mTokenizer;
         SymbolTable mSymbolTable;
+        VMWriter mVMWriter;
         Token mCurrentToken;
         Buffer mClassName;
         char* mInputPath;
-        FILE* mOutputFile;
-        int mIndent;
+        bool mIsVoid;
 
         /// <summary>
         /// Read the next token and verify it as the given keyword
@@ -108,12 +109,6 @@ class CompilationEngine
         /// </summary>
         /// <param name="expectedTokenType">The expected token type</param>
         void readToken(enum TokenType expectedTokenType);
-
-        void printOpenNode(const char* name);
-        void printCloseNode(const char* name);
-        void printIdentifier(Buffer tokenName, const char* category, SymbolKind kind, int index, bool isDeclaration = false);
-        void printIdentifier(const char* category, SymbolKind kind, int index, bool isDeclaration = false);
-        void printCurrentToken();
 
         void unexpectedToken();
 

@@ -77,6 +77,12 @@ char* basename(char* path)
     return filename;
 }
 
+Buffer::Buffer()
+{
+    size = 0;
+    memory = 0;
+}
+
 bool Buffer::equals(Buffer match)
 {
     if (size != match.size)

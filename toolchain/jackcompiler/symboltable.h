@@ -39,10 +39,10 @@ class SymbolTable
         Symbol find(Buffer name);
 
     private:
-        Symbol mClassTable[1000];
+        Symbol mClassTable[300];
         int mClassTableCount;
 
-        Symbol mSubroutineTable[1000];
+        Symbol mSubroutineTable[300];
         int mSubroutineTableCount;
 
         int mVarCounts[SYMBOL_COUNT];

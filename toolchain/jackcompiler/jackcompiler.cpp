@@ -8,7 +8,7 @@ void compileFile(char* path)
     strcpy(outputPath, path);
 
     char* ext = extension(outputPath);
-    strcpy(ext, ".xml");
+    strcpy(ext, ".vm");
 
     CompilationEngine parser = CompilationEngine(path, outputPath);
     parser.compileClass();

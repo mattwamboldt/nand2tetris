@@ -5,6 +5,7 @@ struct Buffer
     long size;
     char* memory;
 
+    Buffer();
     bool equals(Buffer match);
 };
 

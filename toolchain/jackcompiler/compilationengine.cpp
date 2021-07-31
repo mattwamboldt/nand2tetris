@@ -9,13 +9,9 @@ void printIndent(FILE* outputFile, int indent)
 const char* kindStr[] = { "none", "static", "field", "arg", "var" };
 
 CompilationEngine::CompilationEngine(char* inputPath, char* outputPath)
-    :mTokenizer(inputPath), mCurrentToken(), mInputPath(inputPath), mIndent(0)
+    :mTokenizer(inputPath), mVMWriter(outputPath), mCurrentToken(), mInputPath(inputPath), mClassName()
 {
-    mOutputFile = fopen(outputPath, "w");
-    if (!mOutputFile)
-    {
-        printf("Failed to open output file: %s\n", outputPath);
-    }
+    
 }
 
 // type: 'int' | 'char' | 'boolean' | className
@@ -27,19 +23,12 @@ CompilationEngine::CompilationEngine(char* inputPath, char* outputPath)
 void CompilationEngine::compileClass()
 {
     // 'class' className '{' classVarDec* subRoutineDec* '}'
-
-    fprintf(mOutputFile, "<class>\n");
-    mIndent = 2;
-
     readKeyword(Keyword::KEYWORD_CLASS);
-    printCurrentToken();
 
     readToken(TokenType::TOKEN_IDENTIFIER);
-    printCurrentToken();
     mClassName = mCurrentToken.toString();
 
     readSymbol('{');
-    printCurrentToken();
 
     mCurrentToken = mTokenizer.getToken();
     while (mCurrentToken.isKeyword())
@@ -65,18 +54,11 @@ void CompilationEngine::compileClass()
     }
 
     verifySymbol('}');
-    printCurrentToken();
-
-    mIndent = 0;
-    fprintf(mOutputFile, "</class>\n");
 }
 
 void CompilationEngine::compileClassVarDec()
 {
     // ('static' | 'field') type varName (',' varName)* ';'
-    printOpenNode("classVarDec");
-    printCurrentToken();
-
     SymbolKind kind;
     if (mCurrentToken.keyword == KEYWORD_STATIC)
     {
@@ -89,57 +71,42 @@ void CompilationEngine::compileClassVarDec()
 
     mCurrentToken = mTokenizer.getToken();
     Buffer type = mCurrentToken.toString();
-    printCurrentToken();
 
     mCurrentToken = mTokenizer.getToken();
-    int index = mSymbolTable.define(mCurrentToken.toString(), type, kind);
-    printIdentifier(kindStr[kind], kind, index, true);
+    mSymbolTable.define(mCurrentToken.toString(), type, kind);
 
     mCurrentToken = mTokenizer.getToken();
     while (mCurrentToken.isSymbol(','))
     {
-        printCurrentToken();
-        
         mCurrentToken = mTokenizer.getToken();
-        index = mSymbolTable.define(mCurrentToken.toString(), type, kind);
-        printIdentifier(kindStr[kind], kind, index, true);
+        mSymbolTable.define(mCurrentToken.toString(), type, kind);
 
         mCurrentToken = mTokenizer.getToken();
     }
-
-    printCurrentToken();
-    printCloseNode("classVarDec");
 }
 
 void CompilationEngine::compileSubroutine()
 {
     // subroutineDec: ('constructor' | 'function' | 'method') ('void' | type) subRoutineName '(' parameterList ')' subroutineBody
-    printOpenNode("subroutineDec");
-
-    printCurrentToken();
-
     mSymbolTable.startSubroutine();
 
-    // return type
+    Keyword subroutineType = mCurrentToken.keyword;
     mCurrentToken = mTokenizer.getToken();
+
+    // return type
+    bool isVoid = mCurrentToken.isKeyword(KEYWORD_VOID);
     Buffer type = mCurrentToken.toString();
-    printCurrentToken();
+    mCurrentToken = mTokenizer.getToken();
 
     // subroutineName
-    mCurrentToken = mTokenizer.getToken();
     Buffer subroutineName = mCurrentToken.toString();
-    printIdentifier("subroutine", SYMBOL_NONE, -1, true);
 
     readSymbol('(');
-    printCurrentToken();
     compileParameterList();
-    printCurrentToken();
+    verifySymbol(')');
 
     // subroutineBody: '{' varDec* statements '}'
-    printOpenNode("subroutineBody");
-
     readSymbol('{');
-    printCurrentToken();
 
     mCurrentToken = mTokenizer.getToken();
     while (mCurrentToken.isKeyword(KEYWORD_VAR))
@@ -148,89 +115,71 @@ void CompilationEngine::compileSubroutine()
         mCurrentToken = mTokenizer.getToken();
     }
 
-    compileStatements();
-    verifySymbol('}');
-    printCurrentToken();
+    mVMWriter.writeFunction(mClassName, subroutineName, mSymbolTable.varCount(SYMBOL_VAR));
+    if (subroutineType == KEYWORD_METHOD)
+    {
+        // set our this pointer to arg 0
+        // pointer 0 = this, pointer 1 = THAT
+        mVMWriter.writePush(VMSegment::SEGMENT_ARG, 0);
+        mVMWriter.writePop(VMSegment::SEGMENT_POINTER, 0);
+    }
 
-    printCloseNode("subroutineBody");
-    printCloseNode("subroutineDec");
+    compileStatements();
+
+    verifySymbol('}');
 }
 
 void CompilationEngine::compileParameterList()
 {
     // ((type varName) (',' type varName)*)?
-    printOpenNode("parameterList");
-
     mCurrentToken = mTokenizer.getToken();
     if (mCurrentToken.type == TOKEN_IDENTIFIER || mCurrentToken.isKeyword())
     {
         Buffer type = mCurrentToken.toString();
-        printCurrentToken();
 
         mCurrentToken = mTokenizer.getToken();
-        int index = mSymbolTable.define(mCurrentToken.toString(), type, SYMBOL_ARG);
-        printIdentifier("argument", SYMBOL_ARG, index, true);
+        mSymbolTable.define(mCurrentToken.toString(), type, SYMBOL_ARG);
         
         mCurrentToken = mTokenizer.getToken();
     }
 
     while (mCurrentToken.isSymbol(','))
     {
-        printCurrentToken();
-
         // type
         mCurrentToken = mTokenizer.getToken();
         Buffer type = mCurrentToken.toString();
-        printCurrentToken();
 
         // varName
         mCurrentToken = mTokenizer.getToken();
-        int index = mSymbolTable.define(mCurrentToken.toString(), type, SYMBOL_ARG);
-        printIdentifier("argument", SYMBOL_ARG, index, true);
+        mSymbolTable.define(mCurrentToken.toString(), type, SYMBOL_ARG);
 
         mCurrentToken = mTokenizer.getToken();
     }
-
-    printCloseNode("parameterList");
 }
 
 void CompilationEngine::compileVarDec()
 {
     // type varName (',' varName)* ';'
-    printOpenNode("varDec");
-
-    printCurrentToken();
-
     mCurrentToken = mTokenizer.getToken();
     Buffer type = mCurrentToken.toString();
-    printCurrentToken();
 
     mCurrentToken = mTokenizer.getToken();
-    int index = mSymbolTable.define(mCurrentToken.toString(), type, SYMBOL_VAR);
-    printIdentifier(kindStr[SYMBOL_VAR], SYMBOL_VAR, index, true);
+    mSymbolTable.define(mCurrentToken.toString(), type, SYMBOL_VAR);
 
     mCurrentToken = mTokenizer.getToken();
     while (mCurrentToken.isSymbol(','))
     {
-        printCurrentToken();
-
         mCurrentToken = mTokenizer.getToken();
-        index = mSymbolTable.define(mCurrentToken.toString(), type, SYMBOL_VAR);
-        printIdentifier(kindStr[SYMBOL_VAR], SYMBOL_VAR, index, true);
+        mSymbolTable.define(mCurrentToken.toString(), type, SYMBOL_VAR);
         
         mCurrentToken = mTokenizer.getToken();
     }
-
-    printCurrentToken();
-
-    printCloseNode("varDec");
 }
 
 void CompilationEngine::compileStatements()
 {
     // statements: statement*
     // statement: letStatement | ifStatement | whileStatement | doStatement | returnStatement
-    printOpenNode("statements");
 
     while (mCurrentToken.isKeyword())
     {
@@ -264,241 +213,234 @@ void CompilationEngine::compileStatements()
                 unexpectedToken();
         }
     }
-
-    printCloseNode("statements");
 }
 
 void CompilationEngine::compileDo()
 {
     // 'do' subroutineCall ';'
-    printOpenNode("doStatement");
-
-    printCurrentToken();
-
     // subRoutineName
     readToken(TOKEN_IDENTIFIER);
     Buffer subRoutineName = mCurrentToken.toString();
 
     readToken(TOKEN_SYMBOL);
     compileSubroutineCall(subRoutineName);
+
+    // pop the stack with do calls to avoid bleeding garbage values
+    mVMWriter.writePop(SEGMENT_TEMP, 0);
     
     readSymbol(';');
-    printCurrentToken();
-
-    printCloseNode("doStatement");
 }
 
 void CompilationEngine::compileSubroutineCall(Buffer subRoutineName)
 {
+    Buffer className = {};
+    bool isMethod = false;
+
     // Class or object call
     if (mCurrentToken.isSymbol('.'))
     {
         Buffer callerName = subRoutineName;
+        readToken(TOKEN_IDENTIFIER);
+        subRoutineName = mCurrentToken.toString();
+
         Symbol symbol = mSymbolTable.find(callerName);
         if (symbol.kind == SYMBOL_NONE)
         {
-            printIdentifier(callerName, "class", SYMBOL_NONE, -1);
+            className = callerName;
         }
         else
         {
-
-            printIdentifier(callerName, kindStr[symbol.kind], symbol.kind, symbol.index);
+            className = symbol.type;
+            isMethod = true;
         }
-
-        printCurrentToken();
-
-        readToken(TOKEN_IDENTIFIER);
-        subRoutineName = mCurrentToken.toString();
-        printIdentifier(subRoutineName, "subroutine", SYMBOL_NONE, -1);
 
         readToken(TOKEN_SYMBOL);
     }
     // local method call
     else
     {
-        printIdentifier(subRoutineName, "subroutine", SYMBOL_NONE, -1);
+        className = mClassName;
+        isMethod = true;
     }
 
     verifySymbol('(');
-    printCurrentToken();
 
     mCurrentToken = mTokenizer.getToken();
-    compileExpressionList();
+    int nArgs = compileExpressionList();
     verifySymbol(')');
-    printCurrentToken();
+
+    if (isMethod) ++nArgs;
+    mVMWriter.writeCall(className, subRoutineName, nArgs);
 }
 
 void CompilationEngine::compileLet()
 {
     // 'let' varName ('[' expression ']')? '=' expression ';'
-    printOpenNode("letStatement");
-
-    printCurrentToken();
-
+    
     // varName
     readToken(TOKEN_IDENTIFIER);
     Buffer varName = mCurrentToken.toString();
     Symbol symbol = mSymbolTable.find(varName);
-    printIdentifier(kindStr[symbol.kind], symbol.kind, symbol.index);
 
     readToken(TOKEN_SYMBOL);
 
     if (mCurrentToken.isSymbol('['))
     {
-        printCurrentToken();
-
         mCurrentToken = mTokenizer.getToken();
         compileExpression();
 
         verifySymbol(']');
-        printCurrentToken();
         mCurrentToken = mTokenizer.getToken();
     }
 
     verifySymbol('=');
-    printCurrentToken();
-
+    
     mCurrentToken = mTokenizer.getToken();
     compileExpression();
 
     verifySymbol(';');
-    printCurrentToken();
-
-    printCloseNode("letStatement");
 }
 
 void CompilationEngine::compileWhile()
 {
     // 'while' '(' expression ')' '{' statements '}'
-    printOpenNode("whileStatement");
-
-    printCurrentToken();
     readSymbol('(');
-    printCurrentToken();
 
     mCurrentToken = mTokenizer.getToken();
     compileExpression();
     verifySymbol(')');
-    printCurrentToken();
 
     readSymbol('{');
-    printCurrentToken();
 
     mCurrentToken = mTokenizer.getToken();
     compileStatements();
     verifySymbol('}');
-    printCurrentToken();
-
-    printCloseNode("whileStatement");
 }
 
 void CompilationEngine::compileReturn()
 {
     // 'return' expression? ';'
-    printOpenNode("returnStatement");
-
-    printCurrentToken();
-
     mCurrentToken = mTokenizer.getToken();
     if (!mCurrentToken.isSymbol(';'))
     {
         compileExpression();
     }
+    else
+    {
+        mVMWriter.writePush(SEGMENT_CONST, 0);
+    }
 
+    mVMWriter.writeReturn();
     verifySymbol(';');
-    printCurrentToken();
-
-    printCloseNode("returnStatement");
 }
 
 void CompilationEngine::compileIf()
 {
     // 'if' '(' expression ')' '{' statements '} ('else' '{' statements '})?
-    printOpenNode("ifStatement");
-
-    printCurrentToken();
-
     readSymbol('(');
-    printCurrentToken();
 
     mCurrentToken = mTokenizer.getToken();
     compileExpression();
 
     verifySymbol(')');
-    printCurrentToken();
 
     readSymbol('{');
-    printCurrentToken();
 
     mCurrentToken = mTokenizer.getToken();
     compileStatements();
 
     verifySymbol('}');
-    printCurrentToken();
 
     mCurrentToken = mTokenizer.getToken();
     if (mCurrentToken.isKeyword(KEYWORD_ELSE))
     {
-        printCurrentToken();
         readSymbol('{');
-        printCurrentToken();
 
         mCurrentToken = mTokenizer.getToken();
         compileStatements();
 
         verifySymbol('}');
-        printCurrentToken();
 
         mCurrentToken = mTokenizer.getToken();
     }
-
-    printCloseNode("ifStatement");
 }
 
 void CompilationEngine::compileExpression()
 {
     // term (op term)*
     // op: '+ | '-' | '*' | '/' | '&' | '|' | '<' | '>' | '='
-    printOpenNode("expression");
-
     compileTerm();
 
     while (isOperator())
     {
-        printCurrentToken();
+        char op = mCurrentToken.text[0];
         mCurrentToken = mTokenizer.getToken();
         compileTerm();
-    }
 
-    printCloseNode("expression");
+        switch (op)
+        {
+            case '+':
+                mVMWriter.writeArithmetic(COMMAND_ADD);
+                break;
+
+            case '-':
+                mVMWriter.writeArithmetic(COMMAND_SUB);
+                break;
+
+            case '*':
+                mVMWriter.writeCall("Math.multiply", 2);
+                break;
+
+            case '/':
+                mVMWriter.writeCall("Math.divide", 2);
+                break;
+
+            case '&':
+                mVMWriter.writeArithmetic(COMMAND_AND);
+                break;
+
+            case '|':
+                mVMWriter.writeArithmetic(COMMAND_OR);
+                break;
+
+            case '<':
+                mVMWriter.writeArithmetic(COMMAND_LT);
+                break;
+
+            case '>':
+                mVMWriter.writeArithmetic(COMMAND_GT);
+                break;
+
+            case '=':
+                mVMWriter.writeArithmetic(COMMAND_EQ);
+                break;
+        }
+    }
 }
 
 void CompilationEngine::compileTerm()
 {
-    printOpenNode("term");
-    
     // term: integerConstant | stringConstant | keywordConstant
-    if (mCurrentToken.type == TOKEN_INTEGERCONST
-        || mCurrentToken.type == TOKEN_STRINGCONST
-        || isKeywordConstant())
+    if (mCurrentToken.type == TOKEN_INTEGERCONST)
     {
-        printCurrentToken();
+        mVMWriter.writePush(SEGMENT_CONST, mCurrentToken.value);
+        mCurrentToken = mTokenizer.getToken();
+    }
+    else if(mCurrentToken.type == TOKEN_STRINGCONST || isKeywordConstant())
+    {
         mCurrentToken = mTokenizer.getToken();
     }
     // term: '(' expression ')'
     else if (mCurrentToken.isSymbol('('))
     {
-        printCurrentToken();
         mCurrentToken = mTokenizer.getToken();
         compileExpression();
         verifySymbol(')');
-        printCurrentToken();
         mCurrentToken = mTokenizer.getToken();
     }
     // term: ('- | '~') term
     else if (mCurrentToken.isSymbol('-') || mCurrentToken.isSymbol('~'))
     {
-        printCurrentToken();
         mCurrentToken = mTokenizer.getToken();
         compileTerm();
     }
@@ -513,13 +455,10 @@ void CompilationEngine::compileTerm()
         if (mCurrentToken.isSymbol('['))
         {
             Symbol symbol = mSymbolTable.find(varName);
-            printIdentifier(varName, kindStr[symbol.kind], symbol.kind, symbol.index);
 
-            printCurrentToken();
             mCurrentToken = mTokenizer.getToken();
             compileExpression();
             verifySymbol(']');
-            printCurrentToken();
 
             mCurrentToken = mTokenizer.getToken();
         }
@@ -533,30 +472,28 @@ void CompilationEngine::compileTerm()
         else
         {
             Symbol symbol = mSymbolTable.find(varName);
-            printIdentifier(varName, kindStr[symbol.kind], symbol.kind, symbol.index);
         }
     }
-
-    printCloseNode("term");
 }
 
-void CompilationEngine::compileExpressionList()
+int CompilationEngine::compileExpressionList()
 {
+    int numExpressions = 0;
     // (expression (', expression)*)?
-    printOpenNode("expressionList");
-
     if (!mCurrentToken.isSymbol(')'))
     {
         compileExpression();
+        ++numExpressions;
+
         while (mCurrentToken.isSymbol(','))
         {
-            printCurrentToken();
             mCurrentToken = mTokenizer.getToken();
             compileExpression();
+            ++numExpressions;
         }
     }
 
-    printCloseNode("expressionList");
+    return numExpressions;
 }
 
 void CompilationEngine::readKeyword(Keyword expectedKeyword)
@@ -581,39 +518,6 @@ void CompilationEngine::readToken(enum TokenType expectedTokenType)
     {
         unexpectedToken();
     }
-}
-
-void CompilationEngine::printOpenNode(const char* name)
-{
-    printIndent(mOutputFile, mIndent);
-    fprintf(mOutputFile, "<%s>\n", name);
-    mIndent += 2;
-}
-
-void CompilationEngine::printCloseNode(const char* name)
-{
-    mIndent -= 2;
-    printIndent(mOutputFile, mIndent);
-    fprintf(mOutputFile, "</%s>\n", name);
-}
-
-void CompilationEngine::printIdentifier(Buffer tokenName, const char* category, SymbolKind kind, int index, bool isDeclaration)
-{
-    printIndent(mOutputFile, mIndent);
-    fprintf(mOutputFile, "<identifier category=\"%s\" kind=\"%s\" index=\"%d\" isDeclaration=\"%s\"> %.*s </identifier>\n",
-        category, kindStr[kind], index, isDeclaration ? "true" : "false",
-        tokenName.size, tokenName.memory);
-}
-
-void CompilationEngine::printIdentifier(const char* category, SymbolKind kind, int index, bool isDeclaration)
-{
-    printIdentifier(mCurrentToken.toString(), category, kind, index, isDeclaration);
-}
-
-void CompilationEngine::printCurrentToken()
-{
-    printIndent(mOutputFile, mIndent);
-    mCurrentToken.print(mOutputFile);
 }
 
 void CompilationEngine::unexpectedToken()
