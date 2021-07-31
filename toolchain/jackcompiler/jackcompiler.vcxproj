@@ -147,11 +147,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="compilationengine.cpp" />
     <ClCompile Include="jackcompiler.cpp" />
     <ClCompile Include="jacktokenizer.cpp" />
     <ClCompile Include="util.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="compilationengine.h" />
     <ClInclude Include="jacktokenizer.h" />
     <ClInclude Include="util.h" />
   </ItemGroup>

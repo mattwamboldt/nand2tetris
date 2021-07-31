@@ -49,6 +49,12 @@ struct Token
 
     bool equals(const char* match);
     void print(FILE* outputFile);
+
+    bool isKeyword();
+    bool isKeyword(Keyword v);
+
+    bool isSymbol();
+    bool isSymbol(char v);
 };
 
 class JackTokenizer

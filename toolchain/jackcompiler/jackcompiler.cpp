@@ -1,29 +1,17 @@
 #include <windows.h>
 #include "util.h"
-#include "jacktokenizer.h"
-
-void printIndent(FILE* outputFile, int indent)
-{
-    fprintf(outputFile, "%*s", indent, "");
-}
+#include "compilationengine.h"
 
 void compileFile(char* path)
 {
-    JackTokenizer tokenizer = JackTokenizer(path);
-
     char outputPath[256] = {};
     strcpy(outputPath, path);
 
     char* ext = extension(outputPath);
     strcpy(ext, ".xml");
 
-    FILE* outputFile = fopen(outputPath, "w");
-    if (!outputFile)
-    {
-        printf("Failed to open output file\n");
-        return;
-    }
-
+    CompilationEngine parser = CompilationEngine(path, outputPath);
+    parser.compileClass();
 }
 
 int main(int argc, char** argv)
@@ -51,8 +39,7 @@ int main(int argc, char** argv)
                 if ((fdFile.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
                 {
                     sprintf(filePath, "%s\\%s", path, fdFile.cFileName);
-                    JackTokenizer tokenizer = JackTokenizer(filePath);
-                    tokenizer.writeToFile();
+                    compileFile(filePath);
                 }
             } while (FindNextFileA(hFind, &fdFile));
 
@@ -61,8 +48,7 @@ int main(int argc, char** argv)
     }
     else
     {
-        JackTokenizer tokenizer = JackTokenizer(path);
-        tokenizer.writeToFile();
+        compileFile(path);
     }
 
     return 0;

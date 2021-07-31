@@ -59,6 +59,26 @@ void Token::print(FILE* outputFile)
     }
 }
 
+bool Token::isKeyword()
+{
+    return type == TOKEN_KEYWORD;
+}
+
+bool Token::isKeyword(Keyword v)
+{
+    return type == TOKEN_KEYWORD && keyword == v;
+}
+
+bool Token::isSymbol()
+{
+    return type == TOKEN_SYMBOL;
+}
+
+bool Token::isSymbol(char v)
+{
+    return type == TOKEN_SYMBOL && text[0] == v;
+}
+
 bool isDigit(char v)
 {
     return v >= '0' && v <= '9';
