@@ -4,6 +4,8 @@ struct Buffer
 {
     long size;
     char* memory;
+
+    bool equals(Buffer match);
 };
 
 Buffer readWholeFile(char* path);

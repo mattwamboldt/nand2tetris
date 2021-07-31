@@ -1,6 +1,13 @@
 #include <cstring>
 #include "jacktokenizer.h"
-#include "util.h"
+
+Buffer Token::toString()
+{
+    Buffer buffer;
+    buffer.memory = text;
+    buffer.size = length;
+    return buffer;
+}
 
 bool Token::equals(const char* match)
 {

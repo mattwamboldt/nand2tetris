@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdio>
+#include "util.h"
 
 enum TokenType
 {
@@ -41,11 +42,14 @@ struct Token
 {
     enum TokenType type;
     enum Keyword keyword;
-    const char* text;
+    char* text;
     int length;
     int value;
+
     int lineNumber;
     int column;
+
+    Buffer toString();
 
     bool equals(const char* match);
     void print(FILE* outputFile);

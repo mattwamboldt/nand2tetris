@@ -76,3 +76,21 @@ char* basename(char* path)
 
     return filename;
 }
+
+bool Buffer::equals(Buffer match)
+{
+    if (size != match.size)
+    {
+        return false;
+    }
+
+    for (long i = 0; i < size; ++i)
+    {
+        if (memory[i] != match.memory[i])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}

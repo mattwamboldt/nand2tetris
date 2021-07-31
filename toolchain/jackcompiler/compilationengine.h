@@ -1,5 +1,6 @@
 #pragma once
 #include "jacktokenizer.h"
+#include "symboltable.h"
 
 class CompilationEngine
 {
@@ -44,6 +45,8 @@ class CompilationEngine
         /// </summary>
         void compileDo();
 
+        void compileSubroutineCall(Buffer subRoutineName);
+
         /// <summary>
         /// Compiles a let statement
         /// </summary>
@@ -81,7 +84,9 @@ class CompilationEngine
 
     private:
         JackTokenizer mTokenizer;
+        SymbolTable mSymbolTable;
         Token mCurrentToken;
+        Buffer mClassName;
         char* mInputPath;
         FILE* mOutputFile;
         int mIndent;
@@ -106,6 +111,8 @@ class CompilationEngine
 
         void printOpenNode(const char* name);
         void printCloseNode(const char* name);
+        void printIdentifier(Buffer tokenName, const char* category, SymbolKind kind, int index, bool isDeclaration = false);
+        void printIdentifier(const char* category, SymbolKind kind, int index, bool isDeclaration = false);
         void printCurrentToken();
 
         void unexpectedToken();
