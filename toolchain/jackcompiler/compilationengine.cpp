@@ -1,25 +1,13 @@
 #include <stdlib.h>
 #include "compilationengine.h"
 
-void printIndent(FILE* outputFile, int indent)
-{
-    fprintf(outputFile, "%*s", indent, "");
-}
-
-const char* kindStr[] = { "none", "static", "field", "arg", "var" };
-
 CompilationEngine::CompilationEngine(char* inputPath, char* outputPath)
     :mTokenizer(inputPath), mVMWriter(outputPath), mCurrentToken(),
-    mInputPath(inputPath), mClassName(), mIsMethod(false), mWhileCount(0), mIfCount(0)
+    mInputPath(inputPath), mClassName(), mIsMethod(false), mConstructor(false),
+    mWhileCount(0), mIfCount(0)
 {
     
 }
-
-// type: 'int' | 'char' | 'boolean' | className
-// className: identifier
-// subroutineName: identifier
-// varName: identifier
-// subroutineCall: subroutineName '(' expressionList ') | (className | varName) '.' subroutineName '(' expressionList ')
 
 void CompilationEngine::compileClass()
 {
@@ -132,10 +120,12 @@ void CompilationEngine::compileSubroutine()
         mVMWriter.writePush(SEGMENT_CONST, mSymbolTable.varCount(SYMBOL_FIELD));
         mVMWriter.writeCall("Memory.alloc", 1);
         mVMWriter.writePop(VMSegment::SEGMENT_POINTER, 0);
+        mConstructor = true;
     }
 
     compileStatements();
     mIsMethod = false;
+    mConstructor = false;
 
     verifySymbol('}');
 }
@@ -259,7 +249,7 @@ void CompilationEngine::compileSubroutineCall(Buffer subRoutineName, bool isDo)
         }
         else
         {
-            shouldRestoreThis = mIsMethod;
+            shouldRestoreThis = mIsMethod || mConstructor;
             if (shouldRestoreThis)
             {
                 mVMWriter.writePush(SEGMENT_POINTER, 0);
@@ -512,6 +502,14 @@ void CompilationEngine::compileTerm()
     else if(mCurrentToken.type == TOKEN_STRINGCONST)
     {
         // Create string using sitring constructor and assign the values
+        mVMWriter.writePush(SEGMENT_CONST, mCurrentToken.length);
+        mVMWriter.writeCall("String.new", 1);
+        for (int i = 0; i < mCurrentToken.length; ++i)
+        {
+            mVMWriter.writePush(SEGMENT_CONST, mCurrentToken.text[i]);
+            mVMWriter.writeCall("String.appendChar", 2);
+        }
+
         mCurrentToken = mTokenizer.getToken();
     }
     else if (mCurrentToken.isKeyword(KEYWORD_TRUE))
@@ -706,7 +704,7 @@ void CompilationEngine::pushSymbol(Symbol symbol)
             mVMWriter.writePush(SEGMENT_THIS, symbol.index);
             break;
         case SYMBOL_ARG:
-            mVMWriter.writePush(SEGMENT_ARG, symbol.index);
+            mVMWriter.writePush(SEGMENT_ARG, mIsMethod ? symbol.index + 1 : symbol.index);
             break;
     }
 }
@@ -725,7 +723,7 @@ void CompilationEngine::popToSymbol(Symbol symbol)
             mVMWriter.writePop(SEGMENT_THIS, symbol.index);
             break;
         case SYMBOL_ARG:
-            mVMWriter.writePop(SEGMENT_ARG, symbol.index);
+            mVMWriter.writePop(SEGMENT_ARG, mIsMethod ? symbol.index + 1: symbol.index);
             break;
     }
 }

@@ -93,6 +93,7 @@ class CompilationEngine
         int mWhileCount;
         int mIfCount;
         bool mIsMethod;
+        bool mConstructor;
 
         /// <summary>
         /// Read the next token and verify it as the given keyword
