@@ -9,7 +9,8 @@ void printIndent(FILE* outputFile, int indent)
 const char* kindStr[] = { "none", "static", "field", "arg", "var" };
 
 CompilationEngine::CompilationEngine(char* inputPath, char* outputPath)
-    :mTokenizer(inputPath), mVMWriter(outputPath), mCurrentToken(), mInputPath(inputPath), mClassName()
+    :mTokenizer(inputPath), mVMWriter(outputPath), mCurrentToken(),
+    mInputPath(inputPath), mClassName(), mIsVoid(false), mWhileDepth(0), mIfDepth(0)
 {
     
 }
@@ -121,6 +122,12 @@ void CompilationEngine::compileSubroutine()
         // set our this pointer to arg 0
         // pointer 0 = this, pointer 1 = THAT
         mVMWriter.writePush(VMSegment::SEGMENT_ARG, 0);
+        mVMWriter.writePop(VMSegment::SEGMENT_POINTER, 0);
+    }
+    else if (subroutineType == KEYWORD_CONSTRUCTOR)
+    {
+        mVMWriter.writePush(SEGMENT_CONST, mSymbolTable.varCount(SYMBOL_FIELD));
+        mVMWriter.writeCall("Memory.alloc", 1);
         mVMWriter.writePop(VMSegment::SEGMENT_POINTER, 0);
     }
 
@@ -252,6 +259,7 @@ void CompilationEngine::compileSubroutineCall(Buffer subRoutineName)
         {
             className = symbol.type;
             isMethod = true;
+            pushSymbol(symbol);
         }
 
         readToken(TOKEN_SYMBOL);
@@ -261,12 +269,15 @@ void CompilationEngine::compileSubroutineCall(Buffer subRoutineName)
     {
         className = mClassName;
         isMethod = true;
+        mVMWriter.writePush(SEGMENT_POINTER, 0);
     }
 
     verifySymbol('(');
 
     mCurrentToken = mTokenizer.getToken();
+
     int nArgs = compileExpressionList();
+    // TODO: PUSH ARGS
     verifySymbol(')');
 
     if (isMethod) ++nArgs;
@@ -288,16 +299,31 @@ void CompilationEngine::compileLet()
     {
         mCurrentToken = mTokenizer.getToken();
         compileExpression();
+        mVMWriter.writePop(SEGMENT_TEMP, 0);
 
         verifySymbol(']');
         mCurrentToken = mTokenizer.getToken();
+
+        verifySymbol('=');
+
+        mCurrentToken = mTokenizer.getToken();
+        compileExpression();
+
+        pushSymbol(symbol);
+        mVMWriter.writePush(SEGMENT_TEMP, 0);
+        mVMWriter.writeArithmetic(COMMAND_ADD);
+        mVMWriter.writePop(SEGMENT_POINTER, 1);
+        mVMWriter.writePop(SEGMENT_THAT, 0);
     }
+    else
+    {
+        verifySymbol('=');
 
-    verifySymbol('=');
+        mCurrentToken = mTokenizer.getToken();
+        compileExpression();
+        popToSymbol(symbol);
+    }
     
-    mCurrentToken = mTokenizer.getToken();
-    compileExpression();
-
     verifySymbol(';');
 }
 
@@ -306,15 +332,29 @@ void CompilationEngine::compileWhile()
     // 'while' '(' expression ')' '{' statements '}'
     readSymbol('(');
 
+    // Using the same name scheme as the example OS vm code
+    char whileExpLabel[64];
+    sprintf(whileExpLabel, "WHILE_EXP%d", mWhileDepth);
+    mVMWriter.writeLabel(whileExpLabel);
+
     mCurrentToken = mTokenizer.getToken();
     compileExpression();
     verifySymbol(')');
-
     readSymbol('{');
 
+    char whileEndLabel[64];
+    sprintf(whileEndLabel, "WHILE_END%d", mWhileDepth);
+    mVMWriter.writeArithmetic(COMMAND_NOT);
+    mVMWriter.writeIf(whileEndLabel);
+
     mCurrentToken = mTokenizer.getToken();
+    ++mWhileDepth;
     compileStatements();
+    --mWhileDepth;
     verifySymbol('}');
+
+    mVMWriter.writeGoto(whileExpLabel);
+    mVMWriter.writeLabel(whileEndLabel);
 }
 
 void CompilationEngine::compileReturn()
@@ -343,26 +383,49 @@ void CompilationEngine::compileIf()
     compileExpression();
 
     verifySymbol(')');
-
     readSymbol('{');
 
+    char ifTrueLabel[64];
+    sprintf(ifTrueLabel, "IF_TRUE%d", mIfDepth);
+    mVMWriter.writeIf(ifTrueLabel);
+
+    char ifFalseLabel[64];
+    sprintf(ifFalseLabel, "IF_FALSE%d", mIfDepth);
+    mVMWriter.writeGoto(ifFalseLabel);
+    mVMWriter.writeLabel(ifTrueLabel);
+
     mCurrentToken = mTokenizer.getToken();
+    ++mIfDepth;
     compileStatements();
+    --mIfDepth;
 
     verifySymbol('}');
 
     mCurrentToken = mTokenizer.getToken();
     if (mCurrentToken.isKeyword(KEYWORD_ELSE))
     {
+        char ifEndLabel[64];
+        sprintf(ifEndLabel, "IF_END%d", mIfDepth);
+        mVMWriter.writeGoto(ifEndLabel);
+        mVMWriter.writeLabel(ifFalseLabel);
+
         readSymbol('{');
 
         mCurrentToken = mTokenizer.getToken();
+        ++mIfDepth;
         compileStatements();
+        --mIfDepth;
 
         verifySymbol('}');
 
         mCurrentToken = mTokenizer.getToken();
+        mVMWriter.writeLabel(ifEndLabel);
     }
+    else
+    {
+        mVMWriter.writeLabel(ifFalseLabel);
+    }
+
 }
 
 void CompilationEngine::compileExpression()
@@ -426,8 +489,25 @@ void CompilationEngine::compileTerm()
         mVMWriter.writePush(SEGMENT_CONST, mCurrentToken.value);
         mCurrentToken = mTokenizer.getToken();
     }
-    else if(mCurrentToken.type == TOKEN_STRINGCONST || isKeywordConstant())
+    else if(mCurrentToken.type == TOKEN_STRINGCONST)
     {
+        // Create string using sitring constructor and assign the values
+        mCurrentToken = mTokenizer.getToken();
+    }
+    else if (mCurrentToken.isKeyword(KEYWORD_TRUE))
+    {
+        mVMWriter.writePush(SEGMENT_CONST, 1);
+        mVMWriter.writeArithmetic(COMMAND_NEG);
+        mCurrentToken = mTokenizer.getToken();
+    }
+    else if (mCurrentToken.isKeyword(KEYWORD_FALSE) || mCurrentToken.isKeyword(KEYWORD_NULL))
+    {
+        mVMWriter.writePush(SEGMENT_CONST, 0);
+        mCurrentToken = mTokenizer.getToken();
+    }
+    else if (mCurrentToken.isKeyword(KEYWORD_THIS))
+    {
+        mVMWriter.writePush(SEGMENT_POINTER, 0);
         mCurrentToken = mTokenizer.getToken();
     }
     // term: '(' expression ')'
@@ -439,10 +519,17 @@ void CompilationEngine::compileTerm()
         mCurrentToken = mTokenizer.getToken();
     }
     // term: ('- | '~') term
-    else if (mCurrentToken.isSymbol('-') || mCurrentToken.isSymbol('~'))
+    else if (mCurrentToken.isSymbol('-'))
     {
         mCurrentToken = mTokenizer.getToken();
         compileTerm();
+        mVMWriter.writeArithmetic(COMMAND_NEG);
+    }
+    else if (mCurrentToken.isSymbol('~'))
+    {
+        mCurrentToken = mTokenizer.getToken();
+        compileTerm();
+        mVMWriter.writeArithmetic(COMMAND_NOT);
     }
     // term: varName | varName '[' expression ']' | subroutineCall
     else
@@ -460,6 +547,11 @@ void CompilationEngine::compileTerm()
             compileExpression();
             verifySymbol(']');
 
+            pushSymbol(symbol);
+            mVMWriter.writeArithmetic(COMMAND_ADD);
+            mVMWriter.writePop(SEGMENT_POINTER, 1);
+            mVMWriter.writePush(SEGMENT_THAT, 0);
+
             mCurrentToken = mTokenizer.getToken();
         }
         // term: subroutineCall
@@ -472,6 +564,7 @@ void CompilationEngine::compileTerm()
         else
         {
             Symbol symbol = mSymbolTable.find(varName);
+            pushSymbol(symbol);
         }
     }
 }
@@ -569,7 +662,6 @@ bool CompilationEngine::isKeywordConstant()
 
     switch (mCurrentToken.keyword)
     {
-        case KEYWORD_TRUE:
         case KEYWORD_FALSE:
         case KEYWORD_NULL:
         case KEYWORD_THIS:
@@ -577,5 +669,43 @@ bool CompilationEngine::isKeywordConstant()
 
         default:
             return false;
+    }
+}
+
+void CompilationEngine::pushSymbol(Symbol symbol)
+{
+    switch (symbol.kind)
+    {
+        case SYMBOL_STATIC:
+            mVMWriter.writePush(SEGMENT_STATIC, symbol.index);
+            break;
+        case SYMBOL_VAR:
+            mVMWriter.writePush(SEGMENT_LOCAL, symbol.index);
+            break;
+        case SYMBOL_FIELD:
+            mVMWriter.writePush(SEGMENT_THIS, symbol.index);
+            break;
+        case SYMBOL_ARG:
+            mVMWriter.writePush(SEGMENT_ARG, symbol.index);
+            break;
+    }
+}
+
+void CompilationEngine::popToSymbol(Symbol symbol)
+{
+    switch (symbol.kind)
+    {
+        case SYMBOL_STATIC:
+            mVMWriter.writePop(SEGMENT_STATIC, symbol.index);
+            break;
+        case SYMBOL_VAR:
+            mVMWriter.writePop(SEGMENT_LOCAL, symbol.index);
+            break;
+        case SYMBOL_FIELD:
+            mVMWriter.writePop(SEGMENT_THIS, symbol.index);
+            break;
+        case SYMBOL_ARG:
+            mVMWriter.writePop(SEGMENT_ARG, symbol.index);
+            break;
     }
 }

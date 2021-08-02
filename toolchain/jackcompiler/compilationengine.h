@@ -91,6 +91,8 @@ class CompilationEngine
         Buffer mClassName;
         char* mInputPath;
         bool mIsVoid;
+        int mWhileDepth;
+        int mIfDepth;
 
         /// <summary>
         /// Read the next token and verify it as the given keyword
@@ -116,4 +118,7 @@ class CompilationEngine
 
         bool isOperator();
         bool isKeywordConstant();
+
+        void pushSymbol(Symbol symbol);
+        void popToSymbol(Symbol symbol);
 };
