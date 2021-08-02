@@ -10,7 +10,7 @@ const char* kindStr[] = { "none", "static", "field", "arg", "var" };
 
 CompilationEngine::CompilationEngine(char* inputPath, char* outputPath)
     :mTokenizer(inputPath), mVMWriter(outputPath), mCurrentToken(),
-    mInputPath(inputPath), mClassName(), mIsVoid(false), mWhileDepth(0), mIfDepth(0)
+    mInputPath(inputPath), mClassName(), mIsMethod(false), mWhileCount(0), mIfCount(0)
 {
     
 }
@@ -90,6 +90,8 @@ void CompilationEngine::compileSubroutine()
 {
     // subroutineDec: ('constructor' | 'function' | 'method') ('void' | type) subRoutineName '(' parameterList ')' subroutineBody
     mSymbolTable.startSubroutine();
+    mWhileCount = 0;
+    mIfCount = 0;
 
     Keyword subroutineType = mCurrentToken.keyword;
     mCurrentToken = mTokenizer.getToken();
@@ -123,6 +125,7 @@ void CompilationEngine::compileSubroutine()
         // pointer 0 = this, pointer 1 = THAT
         mVMWriter.writePush(VMSegment::SEGMENT_ARG, 0);
         mVMWriter.writePop(VMSegment::SEGMENT_POINTER, 0);
+        mIsMethod = true;
     }
     else if (subroutineType == KEYWORD_CONSTRUCTOR)
     {
@@ -132,6 +135,7 @@ void CompilationEngine::compileSubroutine()
     }
 
     compileStatements();
+    mIsMethod = false;
 
     verifySymbol('}');
 }
@@ -230,18 +234,16 @@ void CompilationEngine::compileDo()
     Buffer subRoutineName = mCurrentToken.toString();
 
     readToken(TOKEN_SYMBOL);
-    compileSubroutineCall(subRoutineName);
-
-    // pop the stack with do calls to avoid bleeding garbage values
-    mVMWriter.writePop(SEGMENT_TEMP, 0);
+    compileSubroutineCall(subRoutineName, true);
     
     readSymbol(';');
 }
 
-void CompilationEngine::compileSubroutineCall(Buffer subRoutineName)
+void CompilationEngine::compileSubroutineCall(Buffer subRoutineName, bool isDo)
 {
     Buffer className = {};
-    bool isMethod = false;
+    int nArgs = 0;
+    bool shouldRestoreThis = false;
 
     // Class or object call
     if (mCurrentToken.isSymbol('.'))
@@ -257,8 +259,14 @@ void CompilationEngine::compileSubroutineCall(Buffer subRoutineName)
         }
         else
         {
+            shouldRestoreThis = mIsMethod;
+            if (shouldRestoreThis)
+            {
+                mVMWriter.writePush(SEGMENT_POINTER, 0);
+            }
+
             className = symbol.type;
-            isMethod = true;
+            ++nArgs;
             pushSymbol(symbol);
         }
 
@@ -268,7 +276,7 @@ void CompilationEngine::compileSubroutineCall(Buffer subRoutineName)
     else
     {
         className = mClassName;
-        isMethod = true;
+        ++nArgs;
         mVMWriter.writePush(SEGMENT_POINTER, 0);
     }
 
@@ -276,12 +284,26 @@ void CompilationEngine::compileSubroutineCall(Buffer subRoutineName)
 
     mCurrentToken = mTokenizer.getToken();
 
-    int nArgs = compileExpressionList();
-    // TODO: PUSH ARGS
+    nArgs += compileExpressionList();
     verifySymbol(')');
 
-    if (isMethod) ++nArgs;
     mVMWriter.writeCall(className, subRoutineName, nArgs);
+
+    // pop the stack with do calls to avoid bleeding garbage values
+    if (isDo)
+    {
+        mVMWriter.writePop(SEGMENT_TEMP, 0);
+        if (shouldRestoreThis)
+        {
+            mVMWriter.writePop(SEGMENT_POINTER, 0);
+        }
+    }
+    else if (shouldRestoreThis)
+    {
+        mVMWriter.writePop(SEGMENT_TEMP, 0);
+        mVMWriter.writePop(SEGMENT_POINTER, 0);
+        mVMWriter.writePush(SEGMENT_TEMP, 0);
+    }
 }
 
 void CompilationEngine::compileLet()
@@ -334,7 +356,7 @@ void CompilationEngine::compileWhile()
 
     // Using the same name scheme as the example OS vm code
     char whileExpLabel[64];
-    sprintf(whileExpLabel, "WHILE_EXP%d", mWhileDepth);
+    sprintf(whileExpLabel, "WHILE_EXP%d", mWhileCount);
     mVMWriter.writeLabel(whileExpLabel);
 
     mCurrentToken = mTokenizer.getToken();
@@ -343,14 +365,13 @@ void CompilationEngine::compileWhile()
     readSymbol('{');
 
     char whileEndLabel[64];
-    sprintf(whileEndLabel, "WHILE_END%d", mWhileDepth);
+    sprintf(whileEndLabel, "WHILE_END%d", mWhileCount);
     mVMWriter.writeArithmetic(COMMAND_NOT);
     mVMWriter.writeIf(whileEndLabel);
 
     mCurrentToken = mTokenizer.getToken();
-    ++mWhileDepth;
+    ++mWhileCount;
     compileStatements();
-    --mWhileDepth;
     verifySymbol('}');
 
     mVMWriter.writeGoto(whileExpLabel);
@@ -386,35 +407,34 @@ void CompilationEngine::compileIf()
     readSymbol('{');
 
     char ifTrueLabel[64];
-    sprintf(ifTrueLabel, "IF_TRUE%d", mIfDepth);
+    sprintf(ifTrueLabel, "IF_TRUE%d", mIfCount);
     mVMWriter.writeIf(ifTrueLabel);
 
     char ifFalseLabel[64];
-    sprintf(ifFalseLabel, "IF_FALSE%d", mIfDepth);
+    sprintf(ifFalseLabel, "IF_FALSE%d", mIfCount);
+
+    char ifEndLabel[64];
+    sprintf(ifEndLabel, "IF_END%d", mIfCount);
+    ++mIfCount;
+
     mVMWriter.writeGoto(ifFalseLabel);
     mVMWriter.writeLabel(ifTrueLabel);
 
     mCurrentToken = mTokenizer.getToken();
-    ++mIfDepth;
     compileStatements();
-    --mIfDepth;
 
     verifySymbol('}');
 
     mCurrentToken = mTokenizer.getToken();
     if (mCurrentToken.isKeyword(KEYWORD_ELSE))
     {
-        char ifEndLabel[64];
-        sprintf(ifEndLabel, "IF_END%d", mIfDepth);
         mVMWriter.writeGoto(ifEndLabel);
         mVMWriter.writeLabel(ifFalseLabel);
 
         readSymbol('{');
 
         mCurrentToken = mTokenizer.getToken();
-        ++mIfDepth;
         compileStatements();
-        --mIfDepth;
 
         verifySymbol('}');
 

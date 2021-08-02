@@ -46,7 +46,7 @@ class CompilationEngine
         /// </summary>
         void compileDo();
 
-        void compileSubroutineCall(Buffer subRoutineName);
+        void compileSubroutineCall(Buffer subRoutineName, bool isDo = false);
 
         /// <summary>
         /// Compiles a let statement
@@ -90,9 +90,9 @@ class CompilationEngine
         Token mCurrentToken;
         Buffer mClassName;
         char* mInputPath;
-        bool mIsVoid;
-        int mWhileDepth;
-        int mIfDepth;
+        int mWhileCount;
+        int mIfCount;
+        bool mIsMethod;
 
         /// <summary>
         /// Read the next token and verify it as the given keyword
