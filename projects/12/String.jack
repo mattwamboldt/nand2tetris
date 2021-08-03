@@ -11,54 +11,183 @@
  * string-oriented operations.
  */
 class String {
+    field int size;
+    field Array buffer;
+    field int length;
 
     /** constructs a new empty string with a maximum length of maxLength
      *  and initial length of 0. */
     constructor String new(int maxLength) {
+        if (maxLength < 0) {
+            do Sys.error(14);
+        }
+
+        if (maxLength > 0)
+        {
+            let buffer = Array.new(maxLength);
+        }
+
+        let size = maxLength;
+        let length = 0;
+        return this;
     }
 
     /** Disposes this string. */
     method void dispose() {
+        if (size > 0)
+        {
+            do Array.dispose(buffer);
+        }
+
+        do Memory.deAlloc(this);
+        return;
     }
 
     /** Returns the current length of this string. */
     method int length() {
+        return length;
     }
 
     /** Returns the character at the j-th location of this string. */
     method char charAt(int j) {
+        if ((j < 0) | (j > length) | (j = length))
+        {
+            do Sys.error(15);
+        }
+
+        return buffer[j];
     }
 
     /** Sets the character at the j-th location of this string to c. */
     method void setCharAt(int j, char c) {
+        if ((j < 0) | (j > length) | (j = length))
+        {
+            do Sys.error(16);
+        }
+
+        let buffer[j] = c;
+        return;
     }
 
     /** Appends c to this string's end and returns this string. */
     method String appendChar(char c) {
+        if (length = size)
+        {
+            do Sys.error(17);
+        }
+
+        let buffer[length] = c;
+        let length = length + 1;
+        return this;
     }
 
     /** Erases the last character from this string. */
     method void eraseLastChar() {
+        if (length = 0)
+        {
+            do Sys.error(18);
+        }
+
+        let length = length - 1;
+        return;
     }
 
     /** Returns the integer value of this string, 
      *  until a non-digit character is detected. */
     method int intValue() {
+        var int index, result, nextDigit;
+        var boolean isDigit, isNegative;
+
+        if (length = 0) {
+            return 0;
+        }
+
+        let isDigit = true;
+        if (buffer[0] = 45)
+        {
+            let isNegative = true;
+            let index = 1;
+        }
+
+        while ((index < length) & isDigit) {
+            let nextDigit = buffer[index] - 48;
+            let isDigit = ~((nextDigit < 0) | (nextDigit > 9));
+            if (isDigit) {
+                let result = (result * 10) + nextDigit;
+                let index = index + 1;
+            }
+        }
+
+        if (isNegative) {
+            let result = -result;
+        }
+
+        return result;
     }
 
     /** Sets this string to hold a representation of the given value. */
     method void setInt(int val) {
+        var int index, remainder;
+        var Array chars;
+        var boolean isNegative;
+
+        if (size = 0)
+        {
+            do Sys.error(19);
+        }
+
+        // store each digit in a temp array and flip it
+        let chars = Array.new(6);
+
+        if (val < 0) {
+            let isNegative = true;
+            let val = -val;
+        }
+
+        let remainder = val;
+        while (remainder > 0) {
+            let remainder = val / 10;
+            let chars[index] = 48 + (val - (remainder * 10));
+            let index = index + 1;
+            let val = remainder;
+        }
+
+        if (isNegative) {
+            let chars[index] = 45;
+            let index = index + 1;
+        }
+
+        if (size < index) {
+            do Sys.error(19);
+        }
+
+        if (index = 0) {
+            let buffer[0] = 48; // '0'
+            let length = 1;
+        } else {
+            let length = 0;
+            while (length < index) {
+                let buffer[length] = chars[index - (length + 1)];
+                let length = length + 1;
+            }
+        }
+
+        do Array.dispose(chars);
+        return;
     }
 
     /** Returns the new line character. */
     function char newLine() {
+        return 128;
     }
 
     /** Returns the backspace character. */
     function char backSpace() {
+        return 129;
     }
 
     /** Returns the double quote (") character. */
     function char doubleQuote() {
+        return 34;
     }
 }

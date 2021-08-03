@@ -1,0 +1,10 @@
+*.vm
+
+ArrayTest/Array.jack
+KeyboardTest/Keyboard.jack
+MathTest/Math.jack
+MemoryTest/Memory.jack
+OutputTest/Output.jack
+ScreenTest/Screen.jack
+StringTest/String.jack
+SysTest/Sys.jack

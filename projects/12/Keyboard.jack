@@ -10,6 +10,7 @@ class Keyboard {
 
     /** Initializes the keyboard. */
     function void init() {
+        return;
     } 
 
     /**
@@ -33,6 +34,7 @@ class Keyboard {
      * F1 - F12 = 141 - 152
      */
     function char keyPressed() {
+        return Memory.peek(24576);
     }
 
     /**								
@@ -41,6 +43,18 @@ class Keyboard {
      * of the pressed key.
      */
     function char readChar() {
+        var char pressed, result;
+        do Output.printChar(0);
+        while ((result = 0) | (pressed > 0)) {
+            let pressed = Keyboard.keyPressed();
+            if (pressed > 0) {
+                let result = pressed;
+            }
+        }
+
+        do Output.printChar(String.backSpace());
+        do Output.printChar(result);
+        return result;
     }
 
     /**								
@@ -49,7 +63,29 @@ class Keyboard {
      * and returns its value. Also handles user backspaces.
      */
     function String readLine(String message) {
-    }   
+        var char nextChar, newLine, backSpace;
+        var String result;
+        var boolean isEOL;
+
+        let result = String.new(80);
+        do Output.printString(message);
+        let newLine = String.newLine();
+        let backSpace = String.backSpace();
+        while (~isEOL) {
+            let nextChar = Keyboard.readChar();
+            let isEOL = nextChar = newLine;
+            if (~isEOL) {
+                if (nextChar = backSpace) {
+                    do result.eraseLastChar();
+                }
+                else {
+                    let result = result.appendChar(nextChar);
+                }
+            }
+        }
+
+        return result;
+    }  
 
     /**								
      * Displays the message on the screen, reads from the keyboard the entered
@@ -58,5 +94,11 @@ class Keyboard {
      * entered text is detected). Also handles user backspaces. 
      */
     function int readInt(String message) {
+        var String line;
+        var int result;
+        let line = Keyboard.readLine(message);
+        let result = line.intValue();
+        do line.dispose();
+        return result;
     }
 }
