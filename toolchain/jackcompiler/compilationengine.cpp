@@ -311,7 +311,8 @@ void CompilationEngine::compileLet()
     {
         mCurrentToken = mTokenizer.getToken();
         compileExpression();
-        mVMWriter.writePop(SEGMENT_TEMP, 0);
+        pushSymbol(symbol);
+        mVMWriter.writeArithmetic(COMMAND_ADD);
 
         verifySymbol(']');
         mCurrentToken = mTokenizer.getToken();
@@ -321,10 +322,9 @@ void CompilationEngine::compileLet()
         mCurrentToken = mTokenizer.getToken();
         compileExpression();
 
-        pushSymbol(symbol);
-        mVMWriter.writePush(SEGMENT_TEMP, 0);
-        mVMWriter.writeArithmetic(COMMAND_ADD);
+        mVMWriter.writePop(SEGMENT_TEMP, 0);
         mVMWriter.writePop(SEGMENT_POINTER, 1);
+        mVMWriter.writePush(SEGMENT_TEMP, 0);
         mVMWriter.writePop(SEGMENT_THAT, 0);
     }
     else
@@ -514,8 +514,8 @@ void CompilationEngine::compileTerm()
     }
     else if (mCurrentToken.isKeyword(KEYWORD_TRUE))
     {
-        mVMWriter.writePush(SEGMENT_CONST, 1);
-        mVMWriter.writeArithmetic(COMMAND_NEG);
+        mVMWriter.writePush(SEGMENT_CONST, 0);
+        mVMWriter.writeArithmetic(COMMAND_NOT);
         mCurrentToken = mTokenizer.getToken();
     }
     else if (mCurrentToken.isKeyword(KEYWORD_FALSE) || mCurrentToken.isKeyword(KEYWORD_NULL))
