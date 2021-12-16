@@ -8,13 +8,34 @@
  * Note: Jack compilers implement multiplication and division using OS method calls.
  */
 class Math {
+    static Array twoToThe;
+    static Array divBuffer;
 
     /** Initializes the library. */
     function void init() {
+        var int i;
+
+        let divBuffer = Array.new(16);
+        let twoToThe = Array.new(16);
+        let twoToThe[0] = 1;
+
+        while (i < 15)
+        {
+            let i = i + 1;
+            let twoToThe[i] = twoToThe[i - 1] + twoToThe[i - 1];
+        }
+
+        return 0;
     }
 
     /** Returns the absolute value of x. */
     function int abs(int x) {
+        if (x < 0)
+        {
+            let x = -x;
+        }
+        
+        return x;
     }
 
     /** Returns the product of x and y. 
@@ -23,6 +44,41 @@ class Math {
      *  the Jack expressions x*y and multiply(x,y) return the same value.
      */
     function int multiply(int x, int y) {
+        var int result;
+        var int swap;
+        var int total;
+        var int shiftOffset;
+        var int shouldNegate;
+
+        let shouldNegate = ((x < 0) & (y > 0)) | ((x > 0) & (y < 0));
+        let x = Math.abs(x);
+        let y = Math.abs(y);
+
+        if (x < y)
+        {
+            let swap = x;
+            let x = y;
+            let y = swap;
+        }
+
+        while ((total - 1) < (y - 1))
+        {
+            if (~((twoToThe[shiftOffset] & y) = 0))
+            {
+                let result = result + x;
+                let total = total + twoToThe[shiftOffset];
+            }
+
+            let x = x + x;
+            let shiftOffset = shiftOffset + 1;
+        }
+
+        if (shouldNegate)
+        {
+            let result = -result;
+        }
+        
+        return result;
     }
 
     /** Returns the integer part of x/y.
@@ -31,17 +87,102 @@ class Math {
      *  the Jack expressions x/y and divide(x,y) return the same value.
      */
     function int divide(int x, int y) {
+        var int i;
+        var int result;
+        var int shouldNegate;
+        var int overflow;
+
+        if (y = 0)
+        {
+            do Sys.error(3);
+        }
+
+        let shouldNegate = ((x < 0) & (y > 0)) | ((x > 0) & (y < 0));
+        let divBuffer[0] = Math.abs(y);
+        let x = Math.abs(x);
+
+        while ((i < 15) & ~overflow)
+        {
+            let overflow = (32767 - (divBuffer[i] - 1)) < (divBuffer[i] - 1);
+
+            if (~overflow)
+            {
+                let divBuffer[i + 1] = divBuffer[i] + divBuffer[i];
+                let overflow = divBuffer[i + 1] - 1 > (x - 1);
+
+                if (~overflow)
+                {
+                    let i = i + 1;
+                }
+            }
+        }
+
+        while (i > -1)
+        {
+            if (~((divBuffer[i] - 1) > (x - 1)))
+            {
+                let result = result + twoToThe[i];
+                let x = x - divBuffer[i];
+            }
+            
+            let i = i - 1;
+        }
+
+        if (shouldNegate)
+        {
+            let result = -result;
+        }
+
+        return result;
     }
 
     /** Returns the integer part of the square root of x. */
     function int sqrt(int x) {
+        var int i;
+        var int sum;
+        var int shiftedX;
+        var int result;
+
+        if (x < 0)
+        {
+            do Sys.error(4);
+        }
+
+        let i = 7;
+
+        while (i > -1)
+        {
+            let sum = result + twoToThe[i];
+            let shiftedX = Math.multiply(sum, sum);
+
+            if (~(shiftedX > x) & ~(shiftedX < 0))
+            {
+                let result = sum;
+            }
+
+            let i = i - 1;
+        }
+
+        return result;
     }
 
     /** Returns the greater number. */
     function int max(int a, int b) {
+        if (a > b)
+        {
+            let b = a;
+        }
+
+        return b;
     }
 
     /** Returns the smaller number. */
     function int min(int a, int b) {
+        if (a < b)
+        {
+            let b = a;
+        }
+
+        return b;
     }
 }
