@@ -10,34 +10,328 @@
  * the screen is indexed (0,0).
  */
 class Screen {
+    static Array bitLookup;
+    static int ram;
+    static int drawColor;
 
     /** Initializes the Screen. */
     function void init() {
+        var int i;
+
+        let ram = 16384;
+        let drawColor = ~0;
+        let bitLookup = Array.new(17);
+        
+        let bitLookup[0] = 1;
+
+        while (i < 16)
+        {
+            let i = i + 1;
+            let bitLookup[i] = bitLookup[i - 1] + bitLookup[i - 1];
+        }
+
+        return;
     }
 
     /** Erases the entire screen. */
     function void clearScreen() {
+        var int i;
+        while (i < 8192)
+        {
+            let ram[i] = 0;
+            let i = i + 1;
+        }
+
+        return;
+    }
+
+    function void updateLocation(int offset, int mask) {
+        if (drawColor)
+        {
+            let ram[offset] = ram[offset] | mask;
+        }
+        else
+        {
+            let ram[offset] = ram[offset] & ~mask;
+        }
+
+        return;
     }
 
     /** Sets the current color, to be used for all subsequent drawXXX commands.
      *  Black is represented by true, white by false. */
     function void setColor(boolean b) {
+        let drawColor = b;
+        return;
     }
 
     /** Draws the (x,y) pixel, using the current color. */
     function void drawPixel(int x, int y) {
+        var int xOffset;
+        var int bitOffset;
+        var int address;
+
+        if ((x < 0) | (x > 511) | (y < 0) | (y > 255))
+        {
+            do Sys.error(7);
+        }
+
+        let xOffset = Math.divide(x, 16);
+        let bitOffset = x - Math.multiply(xOffset, 16);
+        let address = Math.multiply(y, 32) + xOffset;
+        do Screen.updateLocation(address, bitLookup[bitOffset]);
+        return;
+    }
+
+    function void drawConditional(int x, int y, boolean flip) {
+        if (flip)
+        {
+            do Screen.drawPixel(y, x);
+        }
+        else
+        {
+            do Screen.drawPixel(x, y);
+        }
+
+        return;
     }
 
     /** Draws a line from pixel (x1,y1) to pixel (x2,y2), using the current color. */
     function void drawLine(int x1, int y1, int x2, int y2) {
+        var int l0;
+        var int l1;
+        var int l2;
+        var int l3; // width
+        var int l4;
+        var int l5;
+        var int l6;
+        var int l7;
+        var int l8;
+        var int l9;
+        var int l10;
+
+        if ((x1 < 0) | (x2 > 511) | (y1 < 0) | (y2 > 255))
+        {
+            do Sys.error(8);
+        }
+
+        let l3 = Math.abs(x2 - x1);
+        let l2 = Math.abs(y2 - y1);
+        
+        let l6 = l3 < l2;
+        
+        if ((l6 & (y2 < y1)) | (~l6 & (x2 < x1)))
+        {
+            let l4 = x1;
+            let x1 = x2;
+            let x2 = l4;
+            
+            let l4 = y1;
+            let y1 = y2;
+            let y2 = l4;
+        }
+        
+        if (l6)
+        {
+            let l4 = l3;
+            let l3 = l2;
+            let l2 = l4;
+            
+            let l1 = y1;
+            let l0 = x1;
+            let l8 = y2;
+            let l7 = x1 > x2;
+        }
+        else
+        {
+            let l1 = x1;
+            let l0 = y1;
+            let l8 = x2;
+            let l7 = y1 > y2;
+        }
+
+        let l5 = Math.multiply(2, l2) - l3;
+        let l9 = Math.multiply(2, l2);
+        let l10 = Math.multiply(2, l2 - l3);
+        do Screen.drawConditional(l1, l0, l6);
+        
+        while (l1 < l8)
+        {
+            if (l5 < 0)
+            {
+                let l5 = l5 + l9;
+            }
+            else
+            {
+                let l5 = l5 + l10;
+                if (l7)
+                {
+                    let l0 = l0 - 1;
+                }
+                else
+                {
+                    let l0 = l0 + 1;
+                }
+            }
+
+            let l1 = l1 + 1;
+            do Screen.drawConditional(l1, l0, l6);
+        }
+
+        return;
     }
 
     /** Draws a filled rectangle whose top left corner is (x1, y1)
      * and bottom right corner is (x2,y2), using the current color. */
     function void drawRectangle(int x1, int y1, int x2, int y2) {
+        var int address;
+        var int endAddress;
+        var int stride;
+        var int xOffset;
+        var int xEndOffset;
+        var int endMask;
+        var int startMask;
+        var int xByteOffset;
+        var int xEndByteOffset;
+
+        if ((x1 > x2) | (y1 > y2) | (x1 < 0) | (x2 > 511) | (y1 < 0) | (y2 > 255))
+        {
+            do Sys.error(9);
+        }
+
+        let xOffset = Math.divide(x1, 16);
+        let xByteOffset = x1 - Math.multiply(xOffset, 16);
+        let xEndOffset = Math.divide(x2, 16);
+        let xEndByteOffset = x2 - Math.multiply(xEndOffset, 16);
+        let startMask = ~(bitLookup[xByteOffset] - 1);
+        let endMask = bitLookup[xEndByteOffset + 1] - 1;
+        let address = (y1 * 32) + xOffset;
+        let stride = xEndOffset - xOffset;
+
+        while (~(y1 > y2))
+        {
+            let endAddress = address + stride;
+            if (stride = 0)
+            {
+                do Screen.updateLocation(address, endMask & startMask);
+            }
+            else
+            {
+                do Screen.updateLocation(address, startMask);
+                let address = address + 1;
+                while (address < endAddress)
+                {
+                    do Screen.updateLocation(address, -1);
+                    let address = address + 1;
+                }
+
+                do Screen.updateLocation(endAddress, endMask);
+            }
+
+            let y1 = y1 + 1;
+            let address = (endAddress + 32) - stride;
+        }
+
+        return;
+    }
+
+    function void drawHorizontal(int a0, int a1, int a2) {
+        var int l0;
+        var int l1;
+        var int l2;
+        var int l3; // width
+        var int l4;
+        var int l5;
+        var int l6;
+        var int l7;
+        var int l8;
+        var int l9;
+        var int l10;
+
+        let l7 = Math.min(a1, a2);
+        let l8 = Math.max(a1, a2);
+
+        if ((a0 > -1) & (a0 < 256) & (l7 < 512) & (l8 > -1))
+        {
+            let l7 = Math.max(l7, 0);
+            let l8 = Math.min(l8, 511);
+            let l1 = Math.divide(l7, 16);
+            let l9 = l7 - Math.multiply(l1, 16);
+            let l2 = l8 / 16;
+            let l10 = l8 - (l2 * 16);
+
+            let l5 = ~(bitLookup[l9] - 1);
+            let l4 = bitLookup[l10 + 1] - 1;
+            let l0 = (a0 * 32) + l1;
+            let l6 = l2 - l1;
+            let l3 = l0 + l6;
+
+            if (l6 = 0)
+            {
+                do Screen.updateLocation(l0, l4 & l5);
+            }
+            else
+            {
+                do Screen.updateLocation(l0, l5);
+
+                let l0 = l0 + 1;
+                while (l0 < l3)
+                {
+                    do Screen.updateLocation(l0, -1);
+                    let l0 = l0 + 1;
+                }
+
+                do Screen.updateLocation(l3, l4);
+            }
+        }
+
+        return;
+    }
+
+    function void drawSymetric(int a0, int a1, int a2, int a3) { 
+        do Screen.drawHorizontal(a1 - a3, a0 + a2, a0 - a2);
+        do Screen.drawHorizontal(a1 + a3, a0 + a2, a0 - a2);
+        do Screen.drawHorizontal(a1 - a2, a0 - a3, a0 + a3);
+        do Screen.drawHorizontal(a1 + a2, a0 - a3, a0 + a3);
+        return;
     }
 
     /** Draws a filled circle of radius r<=181 around (x,y), using the current color. */
     function void drawCircle(int x, int y, int r) {
+        var int l0;
+        var int l1;
+        var int l2;
+
+        if ((x < 0) | (x > 511) | (y < 0) | (y > 255))
+        {
+            do Sys.error(12);
+        }
+
+        if (((x - r) < 0) | ((x + r) > 511) | ((y - r) < 0) | ((y + r) > 255))
+        {
+            do Sys.error(13);
+        }
+        
+        let l1 = r;
+        let l2 = 1 - r;
+        do Screen.drawSymetric(x, y, l0, l1);
+
+        while (l1 > l0)
+        {
+            if (l2 < 0)
+            {
+                let l2 = l2 + (2 * l0) + 3;
+            }
+            else
+            {
+                let l2 = l2 + (2 * (l0 - l1)) + 5;
+                let l1 = l1 - 1;
+            }
+
+            let l0 = l0 + 1;
+            do Screen.drawSymetric(x, y, l0, l1);
+        }
+        
+        return;
     }
 }
